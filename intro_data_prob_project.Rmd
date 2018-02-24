@@ -1,0 +1,297 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+#install.packages(maps)
+#install.packages("evaluate")
+#install.packages("gridExtra")
+library("gridExtra")
+library(ggplot2)
+library(dplyr)
+library("maps")
+library("evaluate")
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+* * *
+
+## Part 1: Data
+
+
+#### Background
+
+The Behavioral Risk Factor Surveillance System (BRFSS) is the United States' premier system of health-related telephone surveys. The surveys are observational in nature and operate at both the state and local level throughout all 50 states, plus several U.S. territories including the District of Columbia, Puerto Rico, and Guam. The BRFSS was established in 1984 and as of 2013 has collected data on nearly 500,000 U.S. residents.
+
+  To qualify for the surveys, prospective respondents most be a non-institutionalized adult, aged 18 years or older, currently residing in a private or college housing, and currently using a land-line phone. From here, respondents are randomly selected to take part in the survey, in which a surveyor will call the respondent on the land-line to ask a series of questions.
+  
+  The objective of the BRFSS is to collect uniform and state-specific data on preventive health practices and risk behaviors that may affect chronic diseases, injuries, and preventable infectious diseases. Factors assessed by the BRFSS include:
+  
+  
+* tobaccos use
+* HIV/AIDS knowledge and prevention
+* exercise
+* inadequate sleep
+* alcohol consumption
+* diet
+* and many other factors
+* unordered list
+  
+  
+#### Generalizability and Causality  
+  Since a large amount of data was collected using these surveys, and this data was obtained through stratified random sampling, it is safe to generalize this data to the entire United States population. However, since this is an observational study and not an experimental study, only correlations between variables can be established. It is impossible to establish causality through this survey.
+  
+  It is important to note that certain biases may have been introduced due to the nature of the survey and how the data was collected. It is highly likely convenience bias was introduced into the survey due to potential respondents not being available to answer their phone, or not wanting to answer an unknown number. Also, due to the questionaire style of the survey and the survey being conducted over the phone, it is possible respondents may have misunderstood questions or misremembered answers. Similarly, the survey leans towards very personal questions, which may cause some individuals to not accurately report on themselves, for instance not giving an accurate answer to how often they drink or smoke, or the number of sexual partners they have had. Lastly, several of the records in the dataset are incomplete due to incomplete surveys. This lack of data may possibly skew the results. 
+
+* * *
+
+## Part 2: Research questions
+
+  Due to my personal background, mental health has always been a strong interest of mine. Through these research questions, I will explore how different factors correlate to mental health status.
+
+
+**Research question 1:**
+How does mental health vary by gender and state?
+
+**Research question 2:**
+How does mental health status correlate if the respondent is a veteran, single, or has children?
+
+**Resarch Question 3**
+Similar to Question 2, how does a higher education level relate to a respondent's mental health status? Since higher education levels often times result in a higher income, do we see the same correlation between income level and mental health status as we did with the education level?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Research question 1:**
+
+  The variable 'menthlth' will be used to assess the mental health status of the respondents. This variable measures how many days the respondent stated his or her mental state was "poor." 
+
+  To get started, the data will be cleansed to exclude any records that are missing either 'sex' or 'menthlth'. This newly cleansed data will be placed in a new dataset called brfss2013_cleansed.
+
+```{r}
+brfss2013_cleansed <- brfss2013 %>%
+  filter(!is.na(brfss2013$sex), !is.na(brfss2013$menthlth))
+```
+
+  This new dataset brfss2013_cleansed contains 483,145 total records, meaning 8,630 records were removed from the original brfss2013 dataset due to missing values in either 'sex' or 'mentlhlth'.
+
+  The distribution of how mental health varies by gender will be obtained by plotting the count of "poor" mental health days vs. how many times the respondented experienced a bad mental health day. The distribution will be split by male and female so that a side by side comparison can be obtained.
+
+```{r}
+ggplot(aes(x=menthlth, fill=sex), data = brfss2013_cleansed[]) +
+  geom_histogram(bins=30, position = position_dodge()) + ggtitle('Number of Days Mental Health Not Good in the Past 30 Days') + scale_x_continuous(breaks = seq(0, 30, 2))
+```
+
+  The distribution above displays how male and female participants responded to how often he or she felt their mental health was not good in the past 30 days. From the graph, it appears the vast majority of respondents experienced little to no bad mental health days. Also, the graph makes it seem that women experience more bad mental health days than men, however, this could be a case of more women being involved in the study. Let's dig further into this data and get the number of respondents split by gender, as well as other relevant information such as the median and interquartile range.
+
+```{r}
+brfss2013_cleansed %>%
+  group_by(sex) %>%
+  summarise(median= median(menthlth), IQR = IQR(menthlth), min = min(menthlth), max = max(menthlth), strd_dev = sd(menthlth), count = n())
+```
+
+  This summary of the data confirms what was expected. The median for both males and females lies at 0, so it can be inferred that most respondents did not experience a bad mental health day in the past 30 days. It should be noted that median was used in this analysis rather than mean, due to the large dataset. Median is much more reliable value than mean in large datasets since it will not be skewed by outliers as easily. 
+
+  Additionally, the IQR, interquartile range, is on the lower side as well for both males and females. The IQR shows where 75% of the data lies. Since men have an IQR of 1, and women have an IQR of 3, it is safe to say that most people have a healthy mental state as both genders did not experience a bad mental state more than 3 days in the past month.
+
+  Lastly, the assumption that women experience more bad mental days than men proves valid as the IQR for women is higher than that of the male counterpart.
+  
+  The above analysis gives the general trends for the reported mental health by gender for all states, but the trend per state may differ. To better see the general trend for each state, a heat map for number of reported bad mental health days should be built. To do this, a few more steps are required. 
+  
+  First, new datasets should be created that split the data by gender. Using these new datasets, three new data frames will be created. These dataframes will only consist of poor mental health reports, the state, and the gender of the respondent. The three new dataframes will be:
+  
+  
+  * mntlhlth_all - includes both males and females
+  * mntlhlth_men - includes only males
+  * mntlhlth_women - includes only females
+  
+```{r}
+#filter dataset by gender
+brfss2013_men <- brfss2013_cleansed %>%
+  filter(brfss2013_cleansed$sex == 'Male')
+
+brfss2013_women <- brfss2013_cleansed %>%
+  filter(brfss2013_cleansed$sex == 'Female')
+
+#create dataframes for each gender that contains mental health report plus state
+mntlhlth_all <- data.frame(mntlhlth = brfss2013_cleansed$menthlth,
+                   state = tolower(brfss2013_cleansed$X_state),
+                   gender = brfss2013_cleansed$sex)
+
+mntlhlth_men <- data.frame(mntlhlth = brfss2013_men$menthlth,
+                   state = tolower(brfss2013_men$X_state),
+                   gender = brfss2013_men$sex)
+
+mntlhlth_women <- data.frame(mntlhlth = brfss2013_women$menthlth,
+                   state = tolower(brfss2013_women$X_state),
+                   gender = brfss2013_women$sex)
+```
+
+  With the new dataframes created, the data can now be mapped to the United States using the following code. These maps will all be assigned to a single grid for easy comparison.
+
+```{r fig.width=13, fig.height= 13}
+#map data against United States
+map <- map_data("state")
+
+map_all <- ggplot(mntlhlth_all, aes(fill = mntlhlth)) + 
+  geom_map(aes(map_id = state), map = map) + expand_limits(x = map$long, y = map$lat) +
+  ggtitle('Number Reports of Poor Mental Health for All Respondents Heat Map') +
+  guides(fill=guide_legend(title="Count"))
+
+map_men <- ggplot(mntlhlth_men, aes(fill = mntlhlth)) + 
+  geom_map(aes(map_id = state), map = map) + expand_limits(x = map$long, y = map$lat) +
+  ggtitle('Number Reports of Poor Mental Health for Only Male Respondents Heat Map')  +
+  guides(fill=guide_legend(title="Count"))
+
+map_women <- ggplot(mntlhlth_women, aes(fill = mntlhlth)) + 
+  geom_map(aes(map_id = state), map = map) + expand_limits(x = map$long, y = map$lat) +
+  ggtitle('Number Reports of Poor Mental Health for Only Female Respondents Heat Map')  +
+  guides(fill=guide_legend(title="Count"))
+
+#arrange all maps into a single grid
+grid.arrange(map_all, map_men, map_women)
+```
+
+As can be seen from the maps, the general trend for all genders by state moderately varies when split by gender. For instance women report have high reports of a bad mental days in states such as Alabama, Idaho, Michigan, South Carolina, and Idaho. While men have higher reports of poor mental health days in Nevada, Mississippi, Ohio, and Tennessee.
+
+**Research question 2:**
+
+  The next question around the BSFSS data, is if a correlation exists between mental health status, marital status, and if the respondent has children. The same variable to judge how a respondent reports his/her mental state in the past 30 days will be used, 'menthlth'. The variables marital status and children will be 'marital' and 'children' respectively. 
+  
+  To begin to answer this question, the data will need to be further cleansed  as to not skew the analysis due to incomplete data. This cleansing will remove any records that do not contain values for 'children' or 'marital'.
+
+```{r}
+brfss2013_cleansed <- brfss2013_cleansed %>%
+  filter(!is.na(brfss2013_cleansed$menthlth), +
+         !is.na(brfss2013_cleansed$children), +
+         !is.na(brfss2013_cleansed$marital))
+```
+
+  Now that the data has been cleansed, it will need to be plotted. To simplify the plot, new variables will be created:
+* isMntlUnhlthy - states whether the respondent has a poor mental health day in the last 30 days
+* isSingle - states whether the respondent is currently married or identifies as being in a couple
+* hasChildren - states whether the respondent has children or not
+
+  By simplifying the data, our plot will show general trends, however, it is important to note that this simplification may skew the mental status data a bit. It will register if the respondent has had one or more mentally poor days in the last 30 days.
+
+```{r}
+#declare variables for plotting
+hasChildren <- ifelse(brfss2013_cleansed$children > 0, 'Yes', 'No')
+isMntlUnhlthy <- ifelse(brfss2013_cleansed$menthlth > 0, 'Yes', 'No')
+isSingle <- ifelse(brfss2013_cleansed$marital == 'Married' | brfss2013_cleansed$marital == 'A member of an unmarried couple', 'Is Single', 'Married or In Relationship')
+```
+
+  With the variables created, the data is now almost ready to be plotted. To observe the trends of all variables simulatenously, the variables will need to be plotted against one another. To accomplish this, facetting will be used, which will create subplots. To facet a plot, all the data must be within the same source - aka, a dataframe will need to be created that will house the new variables 'isSingle', 'hasChildren,' and 'isMntlUnhlthy.'
+
+```{r}
+#build dataframe that will consist of the newly created variables
+dfMntlHlthMrtlChld <- data.frame(isSingle = isSingle,
+                hasChildren = hasChildren,
+                isMntlUnhlthy = isMntlUnhlthy)
+```
+
+  The data has been accumulated into one spot, and now can be plotted against itself. The overall plot will be split into two subplots that will represent whether the respondent identifies as single or in a relationship, the 'isSingle' variable. The x-axis of each plot will state whether the respondent experienced a poor mental health day in the last 30 days, 'isMntlUnhlthy'. The y-axis will display the count of respondents by mental health status. Finally, the bars on each subplot will represent whether the respondent has children or not.
+
+```{r}
+#plot the information using a facet_wrap so multiple variables can be compared at once
+ggplot(data = dfMntlHlthMrtlChld) +
+  geom_bar(aes(isMntlUnhlthy, fill = hasChildren), position = position_dodge(), width = .75) +
+  facet_wrap(~isSingle, ncol = 2) + 
+  theme(panel.spacing = unit(.25, "lines")) + 
+  xlab("Experienced Poor Mental Health day in Last 30 Days") +
+  ylab("Number of Occurrences") + 
+  ggtitle('Mental Health Compared Against Having Children and Marital Status') +
+  guides(fill=guide_legend(title="Has Children?")) + 
+  scale_y_continuous(breaks = seq(0, 150000, 25000))
+```
+
+  This plot shows a general trend that respondents with no kids tend to experience less unhappy days than their counterparts with kids. However, this trend should be taken with some skepticism as the total number of respondents with no kids, may have a much larger data pool than respondents with kids. This will require further analysis.
+
+  Another interesting trend that appears is couples that have no children experience less mentally unhealthy days than couples that have kids. 
+
+  The last noticeable trend is that respondents that identify as single vary slighly relative to all other categories in regards to whether or not her or she has a child. One would think that single parents would experience more mentally unhealthy days than the average single individual, however, this is barely the trend.
+
+  This plot does not provide the observer with exact numbers, so a table equivalent to the above plot will be built. 
+
+```{r}
+summary(dfMntlHlthMrtlChld)
+```
+
+  This summary data shows that near equal single and non-single respondents were interviewed. However, this data also confirms the skepticism held towards the trend that respondents with no kids tend to experience less unhappy days. Nearly triple the respondents had no kids. This sample size discrepancy would throw off the trend unless normalized.
+
+**Research question 3:**
+  
+  Similar to research questions 1 and 2, to get started on answering how education level and income level affect mental health status, the data will need to be cleansed again to remove any incomplete records. The variables to measure education level and income level will be 'educa' and 'income2', respectively. To stay consistent with the previous research questions, the same 'menthlth' variable will be used to measure how many times respondents stated he or she had a bad mental day in the last 30 days.
+  
+  
+```{r}
+brfss2013_cleansed <- brfss2013_cleansed %>%
+  filter(!is.na(brfss2013_cleansed$menthlth), +
+         !is.na(brfss2013_cleansed$educa), +
+         !is.na(brfss2013_cleansed$income2))
+```
+  
+  With the data cleansed, the data can be plotted to observe the trends for mental health reports by both education level and income level. A simple bar graph will be created to observe the trends, where the x-axis will consist of poor mental days, the y-axis will consist of the number of reports, and the bars will represent education/income level, depending on the graph. Similar to research question 2, the value used for the x-axis will only report whether the respondent has experienced a poor mental health day in the last 30 days or not. If this data was not simplified to this extent, the bar graph would look far too cluttered and would not provide any more meaningful insight.
+  
+```{r fig.width=10, fig.height=10}
+#define plot of education vs mental health and assign to variable
+education_plot <- ggplot(aes(x=ifelse(brfss2013_cleansed$menthlth == 0, 'No', 'Yes'), fill=educa), data = brfss2013_cleansed[order(brfss2013_cleansed$educa), ]) +
+  geom_bar(stat="count", width = .85, position = position_dodge()) + 
+  labs(title = 'Number of Days Mental Health Not Good in the Past 30 Days', 
+       fill = "Education Level", 
+       x = "Reported Poor Mental Day in Last 30 Days",
+       y = "Count of Reports") +
+  #scale_x_continuous(breaks = seq(0, 30, 2)) +
+  scale_y_continuous(breaks = seq(0, 300000, 30000)) +
+  theme(legend.justification = "top", legend.direction = "vertical", text = element_text(size = 10))
+  #guides(fill=guide_legend(title="Has Children?")) 
+
+#define plot of income vs mental health and assign to variable
+income_plot <- ggplot(aes(x=ifelse(brfss2013_cleansed$menthlth == 0, 'No', 'Yes'), fill=income2), data = brfss2013_cleansed[order(brfss2013_cleansed$income2), ]) +
+  geom_bar(stat="count", width = .85, position = position_dodge()) + 
+  labs(title = 'Number of Days Mental Health Not Good in the Past 30 Days', 
+       fill = "Education Level", 
+       x = "Reported Poor Mental Day in Last 30 Days",
+       y = "Count of Reports") +
+  #scale_x_continuous(breaks = seq(0, 30, 2)) +
+  scale_y_continuous(breaks = seq(0, 300000, 30000)) +
+  theme(legend.justification = "top", legend.direction = "vertical", text = element_text(size = 10))
+  #guides(fill=guide_legend(title="Has Children?")) 
+
+#plot both education and income plots side by side for easier comparison
+grid.arrange(education_plot, income_plot)
+
+``` 
+
+  There appears to be no discernable correlation if education level and income level have the same effect on mental health reports. The plots for both education level and income level appear to have the same trends for if the respondent has a poor mental health day or not. 
+  
+  To dig a little further, the summary statistics should be obtained for both the education vs mental health reports, and income vs mental health reports
+
+```{r}
+#obtain summary statistics for education data
+by(brfss2013_cleansed$menthlth, brfss2013_cleansed$educa, summary)
+```
+
+The median for all six education levels is zero, meaning most respondents did not experience a bad mental health day in the last 30 days. The 1st IQR is also zero, further confirming that most respondents did not experience a bad mental day.
+
+```{r}
+#obtain summary statistics for income data
+by(brfss2013_cleansed$menthlth, brfss2013_cleansed$income2, summary)
+```
+
+Similar to the education level statistics, both the median and 1st IQR for all income levels is zero, meaning that most respondents did not have a poor mental health day in the last 30 days.
